@@ -49,38 +49,48 @@ def analyze_face(image_path):
         if not results.multi_face_landmarks:
             raise Exception("No face detected in the image")
 
-
-        # Select 15 main keypoints
-        # key_points = [33, 133, 362, 263, 1, 61, 291, 199,
-        #             94, 0, 24, 130, 359, 288, 378]
         # Select 12 main keypoints
-        key_points = [33, 133, 362, 263, 1, 61, 291, 199,
-                     94, 0, 24, 130]
-
+        key_points = [33, 133, 362, 263, 1, 61, 291, 199, 94, 0, 24, 130]
         height, width = gray_image.shape
-        
-        # Create a new figure for each analysis
-        plt.clf()
-        fig = plt.figure(figsize=(6, 6))
-        #fig = plt.figure(figsize=(2, 4))
-        plt.imshow(gray_image, cmap='gray')
 
-        # Plot facial landmarks
-        for point_idx in key_points:
-            landmark = results.multi_face_landmarks[0].landmark[point_idx]
-            x = int(landmark.x * width)
-            y = int(landmark.y * height)
-            plt.plot(x, y, 'rx')
+        # Prepare transformations
+        transformations = [
+            ("Original", gray_image),
+            ("Horizontally Flipped", cv2.flip(gray_image, 1)),
+            ("Brightened", cv2.convertScaleAbs(gray_image, alpha=1.2, beta=50)),
+            ("Upside Down", cv2.flip(gray_image, 0))
+        ]
 
-        # Save plot to memory
-        buf = BytesIO()
-        plt.savefig(buf, format='png', bbox_inches='tight')
-        buf.seek(0)
-        plt.close(fig)
+        result_images = {}
 
-        # Convert to base64
-        image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-        return image_base64
+        for title, img in transformations:
+            fig, ax = plt.subplots(figsize=(6, 6))
+            ax.imshow(img, cmap='gray')
+            for point_idx in key_points:
+                landmark = results.multi_face_landmarks[0].landmark[point_idx]
+                x = int(landmark.x * width)
+                y = int(landmark.y * height)
+                # Adjust keypoints for transformations
+                if title == "Horizontally Flipped":
+                    x = width - x
+                elif title == "Upside Down":
+                    y = height - y
+                ax.plot(x, y, 'rx')
+            ax.set_title(title)
+            ax.axis('off')
+
+            # Save plot to memory
+            buf = BytesIO()
+            plt.tight_layout()
+            plt.savefig(buf, format='png', bbox_inches='tight')
+            buf.seek(0)
+            plt.close(fig)
+
+            # Convert each image to base64 and store in result_images
+            image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+            result_images[title] = image_base64
+
+        return result_images
 
     except Exception as e:
         print(f"Error in analyze_face: {str(e)}")
@@ -123,12 +133,13 @@ def analyze():
         else:
             return jsonify({'error': 'No file provided'}), 400
 
-        # Analyze the image
-        result_image = analyze_face(filepath)
+        # Analyze the image and get transformations
+        result_images = analyze_face(filepath)
         
+        # Return multiple images in base64
         return jsonify({
             'success': True,
-            'image': result_image
+            'images': result_images  # Send a list of base64 images
         })
 
     except Exception as e:
